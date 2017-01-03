@@ -1,0 +1,22 @@
+{ "manifest_version": 2,
+  "name": "heatmap",
+  "version": "2.0",
+
+  "description": "Mozilla Heatmap",
+
+  "icons": {
+    "16": "icons/icon-16.png",
+    "32": "icons/icon-32.png",
+    "64": "icons/icon-64.png"
+  },
+  "content_scripts": [
+    {
+      "matches": ["*://*/*"],
+      "js": ["heatmap.js"]
+    }
+  ],
+  "background": {
+      "scripts": ["background-script.js"]
+  },
+  "permissions": ["cookies","<all_urls>","tabs"]
+}
