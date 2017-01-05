@@ -18,5 +18,7 @@
   "background": {
       "scripts": ["background-script.js"]
   },
-  "permissions": ["cookies","<all_urls>","tabs"]
+  "permissions": ["webRequest", "<all_urls>",
+                  "cookies","<all_urls>",
+                  "tabs"]
 }
