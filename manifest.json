@@ -16,9 +16,23 @@
     }
   ],
   "background": {
-      "scripts": ["background-script.js"]
+      "scripts": ["background-script.js",
+                  "jose.js",
+                  "networking.js"]
   },
   "permissions": ["webRequest", "<all_urls>",
                   "cookies","<all_urls>",
-                  "tabs"]
+                  // Firefox doesn't support the geolocation permission yet
+                  // "geolocation",
+                  "tabs"],
+  "browser_action": {
+      "browser_style": true,
+      "default_icon": {
+          "16": "icons/icon-16.png",
+          "32": "icons/icon-32.png",
+          "64": "icons/icon-64.png"
+      },
+      "default_title": "Heatmap Settings",
+      "default_popup": "popup/geo.html"
+  }
 }
