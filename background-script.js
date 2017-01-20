@@ -1,4 +1,4 @@
-var portFromContentScript;
+var MESSAGE_PORT;
 
 function logCookie(c) {
     console.log(c);
@@ -14,15 +14,6 @@ function logTab(tab) {
 
 function getActiveTab() {
     return browser.tabs.query({currentWindow: true, active: true});
-}
-
-function activatedListener(activeInfo) {
-    var tabId = activeInfo.tabId;
-    var windowId = activeInfo.windowId;
-    var gettingInfo = browser.tabs.get(tabId);
-    gettingInfo.then((tab) => {
-        console.log("[activeTab index: "+tab.index +" tabId: "+tabId+" url:" + tab.url + "]");
-    });
 }
 
 function attachedListener(tabId, attachInfo) {
@@ -100,10 +91,31 @@ var BrowserEventListener = function(browserModel) {
         var windowId = tab.windowId;
         var createTimeMs = Date.now();
 
-        var tabIdentity = createTimeMs.toFixed(1) + "_" + windowId.toFixed(1) + "_" + tabId.toFixed(1);
-
+        var tabIdentity = this.getTabIdentity(tab, createTimsMs);
         this.browserModel.addNewTab(tabIdentity, tab);
     }
+
+    this.getTabIdentity = (tab, createTimeMs) => {
+        // TODO: removve createTimeMs
+        var tabIdentity = createTimeMs.toFixed(1);
+        tabIdentity += "|";
+        tabIdentity += windowId.toFixed(1);
+        tabIdentity += "|";
+        tabIdentity += tabId.toFixed(1);
+        return tabIdentity;
+    }
+
+    this.tabsOnActivatedListener = (activeInfo) => {
+        var tabId = activeInfo.tabId;
+        var windowId = activeInfo.windowId;
+        var gettingInfo = browser.tabs.get(tabId);
+
+        gettingInfo.then((tab) => {
+            // TODO: update the tab information using 
+            this.browserModel.updateTab(tab);
+        });
+    }
+
 }
 
 var BrowserModel = function() {
@@ -115,8 +127,41 @@ var BrowserModel = function() {
         return this._listeners;
     }
 
+    /*
+     * Dump the attributes of tabs.Tab into a JSON compatible
+     * structure.
+     *
+     * All attribute names are taken from the tabs.Tab specification
+     */
+    this.tabToJson = (tab) => {
+        var tabData = {};
+        tabData.active = tab.active;
+        tabData.audible = tab.audible;
+        tabData.cookieStoreId = tab.cookieStoreId;
+        tabData.favIconUrl = tab.favIconUrl;
+        tabData.height = tab.height;
+        tabData.highlighted = tab.highlighted;
+        tabData.id = tab.id;
+        tabData.incognito = tab.incognito;
+        tabData.index = tab.index;
+        // skip mutedInfo
+        tabData.openerTabId = tab.openerTabId;
+        tabData.pinned = tab.pinned;
+        tabData.selected = tab.selected;
+        tabData.sessionId = tab.sessionId;
+        tabData.status = tab.status;
+        tabData.title = tab.title;
+        tabData.url = tab.url;
+        tabData.width = tab.width;
+        tabData.windowId = tab.windowId;
+        return tabData;
+    }
+
+    this.updateTab = (tab) => {
+    }
+
     this.addNewTab = (tabIdentity, tab) => {
-        this.tabs[tabIdentity] = tab;
+        this.tabs[tabIdentity] = this.tabToJson(tab);
         console.log("added a new tab with identity: [" + tabIdentity + "]");
     }
 
@@ -146,11 +191,6 @@ var BrowserModel = function() {
      * status   |  all            |  [{create_time, tab_duration, current_session}, ...]
      *
      */
-
-    this.listenEvent = (msgClass, msgCmd, msgPayload) => {
-        // TODO: dispatch incoming events to mutate the internal state
-        // of this object
-    }
 }
 
 /*
@@ -158,23 +198,52 @@ var BrowserModel = function() {
  * content script to the background script
  */
 function portConnected(p) {
-  portFromContentScript = p;
-  portFromContentScript.postMessage({greeting: "hi there content script!"});
-  portFromContentScript.onMessage.addListener(function(m) {
-    console.log("In background script, received message from content script")
-    console.log(m.greeting);
-  });
+    MESSAGE_PORT = p;
+    // TODO: iterate over each tab and getOrSet tab identifiers within
+    // the DOM of each tab.
+
+    function getOrSetTabs(tabs) {
+        for (tab of tabs) {
+			// Communicate with the DOM of the tab to getOrSet the tabID
+            // tab.url requires the `tabs` permission
+            // console.log(tab.url);
+        }
+    }
+
+    function onError(error) {
+        console.log(`Error: ${error}`);
+    }
+
+    var querying = browser.tabs.query({});
+    querying.then(getOrSetTabs, onError);
+
+    MESSAGE_PORT.postMessage({tabident: "background-script-tabident"});
+    MESSAGE_PORT.onMessage.addListener(function(m) {
+        console.log("In background script, received message from content script")
+        console.log(m.greeting);
+    });
 }
 
 
 function registerListeners(fx) {
+    /*
+     * We direclty wire in listeners in the BrowserEventListener
+     */
     // Listeners that are properly wired up
     browser.tabs.onCreated.addListener(fx.getListener().tabsOnCreatedListener);
+    browser.tabs.onActivated.addListener(fx.getListener().tabsOnActivatedListener);
+
+    // Now connect the port between the background-script and the
+    // content-script
+    browser.runtime.onConnect.addListener(portConnected);
+
+    browser.browserAction.onClicked.addListener(function() {
+        MESSAGE_PORT.postMessage({greeting: "they clicked the button!"});
+    });
 
     // listeners below this line are not properly wired in
     // ---------------------------------------------------
 
-//    browser.tabs.onActivated.addListener(activatedListener);
 //    browser.tabs.onAttached.addListener(attachedListener);
 //
 //    browser.webRequest.onBeforeRequest.addListener(onBeforeRequestListener, {urls: ["<all_urls>"]});
@@ -186,13 +255,6 @@ function registerListeners(fx) {
 //
 //    browser.windows.onFocusChanged.addListener(onFocusChangesListener);
 //
-//    // Now connect the port between the background-script and the
-//    // content-script
-//    browser.runtime.onConnect.addListener(portConnected);
-//
-//    browser.browserAction.onClicked.addListener(function() {
-//      portFromContentScript.postMessage({greeting: "they clicked the button!"});
-//    });
 }
 
 

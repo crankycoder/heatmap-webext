@@ -12,7 +12,7 @@
   "content_scripts": [
     {
       "matches": ["*://*/*"],
-      "js": ["heatmap.js"]
+      "js": ["content_script.js"]
     }
   ],
   "background": {
