@@ -16,20 +16,25 @@ function mozilla_heatmap_guid() {
 }
 
 /*
+ * This injects a meta tag with the name and id of 'mozilla-heatmpa-tabident'
+ * with a GUID as the node content.  This allows us to unambiguously determine
+ * the identity of each tab in the case that heatmap misses some tab
+ * manipulation events.
+ *
  */
 function inject_meta_tabident() {
     // check if the tag already exists, if it does - short circuit
     // and return the content
-    var tabident_nodes = document.getElementsById('mozilla-heatmap-tabident');
-    if (tabident_nodes.length > 0) {
+    var tabident_node = document.getElementById('mozilla-heatmap-tabident');
+    if (tabident_node) {
         return tabident_nodes[0].content;
     }
 
     var meta = document.createElement('meta');
-    meta.name = "mozilla-heatmap-tabident";
-    meta.id = "mozilla-heatmap-tabident";
+    meta.name = "mozilla-heatmap-pageident";
+    meta.id = "mozilla-heatmap-pageident";
     meta.content = mozilla_heatmap_guid();
-    // TODO: there may not e a head tag
+
     document.getElementsByTagName('head')[0].appendChild(meta);
     return meta.content;
 }
@@ -38,20 +43,17 @@ function inject_meta_tabident() {
 var myPort = browser.runtime.connect({name:"port-from-cs"});
 
 function main() {
-    inject_meta_tabident();
+    var page_guid = inject_meta_tabident();
 
     // Send init message to the background script
-    myPort.postMessage({greeting: "hello from content script"});
+    myPort.postMessage({page_ident: page_guid, url: document.URL});
 
+    /*
     myPort.onMessage.addListener(function(m) {
         console.log("In content script, received message from background script: ");
         console.log(m.greeting);
-
     });
-
-    document.body.addEventListener("click", function() {
-        myPort.postMessage({greeting: "they clicked the page!"});
-    });
+    */
 }
 
 main();

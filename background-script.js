@@ -85,25 +85,16 @@ var BrowserEventListener = function(browserModel) {
 
     this.tabsOnCreatedListener = (tab) => {
         console.log("tabsOnCreatedListener invoked");
-        // TODO: create a unique ID based on tabId, windowId and
+        // create a unique ID based on tabId, windowId and
         // createTime
         var tabId = tab.id;
         var windowId = tab.windowId;
         var createTimeMs = Date.now();
 
-        var tabIdentity = this.getTabIdentity(tab, createTimsMs);
-        this.browserModel.addNewTab(tabIdentity, tab);
+        var tabIdentity = this.browserModel._computeTabIdentity(tab);
+        this.browserModel.addNewTab(tabIdentity, tab, createTimsMs);
     }
 
-    this.getTabIdentity = (tab, createTimeMs) => {
-        // TODO: removve createTimeMs
-        var tabIdentity = createTimeMs.toFixed(1);
-        tabIdentity += "|";
-        tabIdentity += windowId.toFixed(1);
-        tabIdentity += "|";
-        tabIdentity += tabId.toFixed(1);
-        return tabIdentity;
-    }
 
     this.tabsOnActivatedListener = (activeInfo) => {
         var tabId = activeInfo.tabId;
@@ -133,7 +124,7 @@ var BrowserModel = function() {
      *
      * All attribute names are taken from the tabs.Tab specification
      */
-    this.tabToJson = (tab) => {
+    this.tabToJson = (tab, createTimeMs) => {
         var tabData = {};
         tabData.active = tab.active;
         tabData.audible = tab.audible;
@@ -154,14 +145,37 @@ var BrowserModel = function() {
         tabData.url = tab.url;
         tabData.width = tab.width;
         tabData.windowId = tab.windowId;
+        if (createTimeMs) {
+            tabData.createTimeMs = createTimeMs;
+        }
         return tabData;
     }
 
     this.updateTab = (tab) => {
+        // TODO: we probably want to keep a journal of all tab
+        // information by making a copy so that we can serialize to
+        // disk
+        var tabIdentity = this._computeTabIdentity(tab);
+        this.tabs[tabIdentity] = this.tabToJson(tab);
+        console.log("Updated tab: ["+tabIdentity+"]");
     }
 
-    this.addNewTab = (tabIdentity, tab) => {
-        this.tabs[tabIdentity] = this.tabToJson(tab);
+    /*
+     * A tab's identity within the BrowserModel is :
+     * (createWindowId, tabId)
+     */
+    this._computeTabIdentity = (tab) => {
+        var tabId = tab.id;
+        var windowId = tab.windowId;
+
+        var tabIdentity = windowId.toFixed(1);
+        tabIdentity += "|";
+        tabIdentity += tabId.toFixed(1);
+        return tabIdentity;
+    }
+
+    this.addNewTab = (tabIdentity, tab, createTimeMs) => {
+        this.tabs[tabIdentity] = this.tabToJson(tab, createTimeMs);
         console.log("added a new tab with identity: [" + tabIdentity + "]");
     }
 
@@ -204,7 +218,7 @@ function portConnected(p) {
 
     function getOrSetTabs(tabs) {
         for (tab of tabs) {
-			// Communicate with the DOM of the tab to getOrSet the tabID
+            // Communicate with the DOM of the tab to getOrSet the tabID
             // tab.url requires the `tabs` permission
             // console.log(tab.url);
         }
@@ -217,11 +231,19 @@ function portConnected(p) {
     var querying = browser.tabs.query({});
     querying.then(getOrSetTabs, onError);
 
-    MESSAGE_PORT.postMessage({tabident: "background-script-tabident"});
     MESSAGE_PORT.onMessage.addListener(function(m) {
         console.log("In background script, received message from content script")
-        console.log(m.greeting);
+        console.log("TabIdentity received: ["+m.url+"]["+m.page_ident+"]");
+        /*
+         * TODO: run a check against the BrowserModel to make sure that this
+         * tabident is registered with the heatmap
+         */
     });
+
+    // TODO: Send messages to communicate with a tab by including the tabident in the
+    // payload body
+    //    MESSAGE_PORT.postMessage({tabident: "background-script-tabident"});
+
 }
 
 
