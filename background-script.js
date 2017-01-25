@@ -16,14 +16,6 @@ function getActiveTab() {
     return browser.tabs.query({currentWindow: true, active: true});
 }
 
-function attachedListener(tabId, attachInfo) {
-    var windowId = attachInfo.newWindowId;
-    var newIndex = attachInfo.newWindowId;
-    var gettingInfo = browser.tabs.get(tabId);
-    gettingInfo.then((tab) => {
-        console.log("[attachedTab windowId: "+windowId+" newIndex: "+newIndex+" oldTabId:"+tabId+" url:" + tab.url + "]");
-    });
-}
 
 // This is probably not useful, as headers are not ready yet.  For
 // that, you need to use onBeforeSendHeaders
@@ -91,8 +83,22 @@ var BrowserEventListener = function(browserModel) {
         var windowId = tab.windowId;
         var createTimeMs = Date.now();
 
-        var tabIdentity = this.browserModel._computeTabIdentity(tab);
-        this.browserModel.addNewTab(tabIdentity, tab, createTimsMs);
+        this.browserModel.addNewTab(tab, createTimsMs);
+    }
+
+    /*
+     * Invoked when a tab is attached to a window.  Note that this will
+     * change the tab's windowId
+     */
+    this.tabsOnAttachedListener = (tabId, attachInfo) => {
+        var newWindowId = attachInfo.newWindowId;
+        var newIndex = attachInfo.newPosition;
+        var gettingInfo = browser.tabs.get(tabId);
+        gettingInfo.then((tab) => {
+            console.log("[attachedTab newWindowId: "+newWindowId+" newIndex: "+newIndex+" tabId:"+tabId+" url:" + tab.url + "]");
+             
+            this.browserModel.updateTabIdentityNewWindowId(tab, newWindowId);
+        });
     }
 
 
@@ -124,8 +130,12 @@ var BrowserModel = function() {
      *
      * All attribute names are taken from the tabs.Tab specification
      */
-    this.tabToJson = (tab, createTimeMs) => {
+    this.updateTabJson = (tab, createTimeMs) => {
+        var tabIdentity = this._computeTabIdentity(tab);
         var tabData = {};
+        if (this.tabs[tabIdentity]) {
+            tabData = this.tabs[tabIdentity];
+        }
         tabData.active = tab.active;
         tabData.audible = tab.audible;
         tabData.cookieStoreId = tab.cookieStoreId;
@@ -145,19 +155,22 @@ var BrowserModel = function() {
         tabData.url = tab.url;
         tabData.width = tab.width;
         tabData.windowId = tab.windowId;
-        if (createTimeMs) {
-            tabData.createTimeMs = createTimeMs;
+
+        // Set a createTimeMs if URL exists
+        if (tabData.url && !tabData.createTimeMs) {
+            // TODO: this isn't working properly for the !createTimeMs
+            // check
+            tabData.createTimeMs = Date.now();
+            console.log("Set createTimeMs for : " + tabData.url);
         }
-        return tabData;
+        this.tabs[tabIdentity] = tabData;
     }
 
     this.updateTab = (tab) => {
         // TODO: we probably want to keep a journal of all tab
         // information by making a copy so that we can serialize to
         // disk
-        var tabIdentity = this._computeTabIdentity(tab);
-        this.tabs[tabIdentity] = this.tabToJson(tab);
-        console.log("Updated tab: ["+tabIdentity+"]");
+        this.updateTabJson(tab);
     }
 
     /*
@@ -168,15 +181,42 @@ var BrowserModel = function() {
         var tabId = tab.id;
         var windowId = tab.windowId;
 
-        var tabIdentity = windowId.toFixed(1);
+        var tabIdentity = windowId.toFixed(0);
         tabIdentity += "|";
-        tabIdentity += tabId.toFixed(1);
+        tabIdentity += tabId.toFixed(0);
         return tabIdentity;
     }
 
-    this.addNewTab = (tabIdentity, tab, createTimeMs) => {
-        this.tabs[tabIdentity] = this.tabToJson(tab, createTimeMs);
-        console.log("added a new tab with identity: [" + tabIdentity + "]");
+    /*
+     * Find the old tabIdentity in this.tabs.keys()
+     */
+    this.updateTabIdentityNewWindowId = (tab, newWindowId) => {
+        for (tabIdent of Object.keys(this.tabs)) {
+            var identParts = tabIdent.split("|");
+            var tmpTabId = parseInt(identParts[1]);
+            if (tmpTabId === tab.id) {
+                // Move the tab over to the new identity
+                var newTabIdent = newWindowId.toFixed(0);
+                newTabIdent += "|";
+                newTabIdent += tmpTabId.toFixed(0);
+
+                console.log("Moving from ["+tabIdent+"] to ["+newTabIdent+"]");
+                this.tabs[newTabIdent] = this.tabs[tabIdent];
+
+                // remove the old key
+                delete this.tabs[tabIdent];
+                console.log("===========");
+                for (tmpIdent of Object.keys(this.tabs)) {
+                    console.log("TabIdent: " + tmpIdent);
+                }
+                console.log("===========");
+                break;
+            }
+        }
+    }
+
+    this.addNewTab = (tab, createTimeMs) => {
+        this.updateTabJson(tab, createTimeMs);
     }
 
     /*
@@ -266,7 +306,7 @@ function registerListeners(fx) {
     // listeners below this line are not properly wired in
     // ---------------------------------------------------
 
-//    browser.tabs.onAttached.addListener(attachedListener);
+    browser.tabs.onAttached.addListener(fx.getListener().tabsOnAttachedListener);
 //
 //    browser.webRequest.onBeforeRequest.addListener(onBeforeRequestListener, {urls: ["<all_urls>"]});
 //    browser.webRequest.onBeforeSendHeaders.addListener(onBeforeSendHeadersListener, 
